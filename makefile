@@ -1,3 +1,6 @@
+VERSION := $(shell cat VERSION)
+
+
 test:
 	go test -v -race -cover
 
