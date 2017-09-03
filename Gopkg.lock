@@ -4,14 +4,14 @@
 [[projects]]
   name = "bitbucket.org/spotlightdatateam/hcc_nmo_go"
   packages = ["."]
-  revision = "ac1226aecc59501e09ba65121ac84efc35a80ebd"
-  version = "1.4.1"
+  revision = "280864c9ea8dcb6236105005b5f3ed0a49452bc3"
+  version = "1.4.2"
 
 [[projects]]
   name = "bitbucket.org/spotlightdatateam/lsqlib"
   packages = ["."]
-  revision = "865f986412d4a14e84069e1d31fe46763a6ce0a0"
-  version = "1.5.0"
+  revision = "cabbd7642a55a5fdfc44d91fc90db29ebf45b554"
+  version = "1.5.1"
 
 [[projects]]
   name = "github.com/go-ini/ini"
@@ -101,7 +101,7 @@
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix","windows"]
-  revision = "a07a691ac871746ae690ccf3ab217363b2144531"
+  revision = "7ddbeae9ae08c6a06a59597f0c9edbc5ff2444ce"
 
 [solve-meta]
   analyzer-name = "dep"
