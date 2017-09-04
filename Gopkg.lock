@@ -4,14 +4,14 @@
 [[projects]]
   name = "bitbucket.org/spotlightdatateam/hcc_nmo_go"
   packages = ["."]
-  revision = "280864c9ea8dcb6236105005b5f3ed0a49452bc3"
-  version = "1.4.2"
+  revision = "2bf25272f2233c7d9024f879ba9348b058501a1f"
+  version = "1.4.6"
 
 [[projects]]
   name = "bitbucket.org/spotlightdatateam/lsqlib"
   packages = ["."]
-  revision = "cabbd7642a55a5fdfc44d91fc90db29ebf45b554"
-  version = "1.5.1"
+  revision = "c1410f97e2149a31dfc5475ca9b3902e414430ca"
+  version = "1.6.0"
 
 [[projects]]
   name = "github.com/go-ini/ini"
@@ -106,6 +106,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "4b1915875707a83a7d5350bbf96054536e3a2736db9349aa6204bbfdfe59f3fd"
+  inputs-digest = "84456f7838f835cbbd9adb7811ee7587a7992aab0202c1777ccaef6841da7045"
   solver-name = "gps-cdcl"
   solver-version = 1
