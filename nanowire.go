@@ -95,6 +95,7 @@ func Bind(callback TaskEvent, name string) (err error) {
 			logger.Warn("failed to unmarshal delivery body",
 				zap.Error(err),
 				zap.Uint64("delivery_tag", delivery.DeliveryTag))
+			delivery.Reject(false)
 			return
 		}
 
@@ -103,6 +104,7 @@ func Bind(callback TaskEvent, name string) (err error) {
 			logger.Warn("failed to validate nmo",
 				zap.Errors("errors", errs),
 				zap.Uint64("delivery_tag", delivery.DeliveryTag))
+			delivery.Reject(false)
 			return
 		}
 
@@ -111,6 +113,7 @@ func Bind(callback TaskEvent, name string) (err error) {
 				zap.String("job_id", payload.NMO.Job.JobID),
 				zap.String("task_id", payload.NMO.Task.TaskID),
 				zap.Uint64("delivery_tag", delivery.DeliveryTag))
+			delivery.Reject(false)
 			return
 		}
 
@@ -131,6 +134,7 @@ func Bind(callback TaskEvent, name string) (err error) {
 				zap.String("job_id", payload.NMO.Job.JobID),
 				zap.String("task_id", payload.NMO.Task.TaskID),
 				zap.Uint64("delivery_tag", delivery.DeliveryTag))
+			delivery.Reject(false)
 			return
 		}
 		if !exists {
@@ -138,6 +142,7 @@ func Bind(callback TaskEvent, name string) (err error) {
 				zap.String("job_id", payload.NMO.Job.JobID),
 				zap.String("task_id", payload.NMO.Task.TaskID),
 				zap.Uint64("delivery_tag", delivery.DeliveryTag))
+			delivery.Reject(false)
 			return
 		}
 
@@ -148,6 +153,7 @@ func Bind(callback TaskEvent, name string) (err error) {
 				zap.String("job_id", payload.NMO.Job.JobID),
 				zap.String("task_id", payload.NMO.Task.TaskID),
 				zap.Uint64("delivery_tag", delivery.DeliveryTag))
+			delivery.Reject(false)
 			return
 		}
 
@@ -166,6 +172,7 @@ func Bind(callback TaskEvent, name string) (err error) {
 				zap.String("job_id", payload.NMO.Job.JobID),
 				zap.String("task_id", payload.NMO.Task.TaskID),
 				zap.Uint64("delivery_tag", delivery.DeliveryTag))
+			delivery.Reject(false)
 			return
 		}
 
@@ -183,14 +190,25 @@ func Bind(callback TaskEvent, name string) (err error) {
 						zap.String("job_id", payload.NMO.Job.JobID),
 						zap.String("task_id", payload.NMO.Task.TaskID),
 						zap.Uint64("delivery_tag", delivery.DeliveryTag))
+					delivery.Reject(false)
 					return
 				}
 			} else {
 				active[payload.NMO.Job.JobID] = struct{}{}
 			}
 
-			plugin.sender.Send(0, "", payloadRaw)
+			err = plugin.sender.Send(0, "", payloadRaw)
+			if err != nil {
+				logger.Warn("failed to send payload",
+					zap.Error(err),
+					zap.String("job_id", payload.NMO.Job.JobID),
+					zap.String("task_id", payload.NMO.Task.TaskID),
+					zap.Uint64("delivery_tag", delivery.DeliveryTag))
+				delivery.Reject(false)
+				return
+			}
 		}
+		delivery.Ack(false)
 	}
 
 	plugin.receiver, err = lsqlib.NewQueueReceiver(context.Background(), plugin.config.AmqpHost, plugin.config.AmqpPort, plugin.config.AmqpMgrPort, plugin.config.AmqpUser, plugin.config.amqpPass, &lsqlib.ReceiverConfig{
