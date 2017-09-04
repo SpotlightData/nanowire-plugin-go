@@ -10,8 +10,8 @@
 [[projects]]
   name = "bitbucket.org/spotlightdatateam/lsqlib"
   packages = ["."]
-  revision = "c1410f97e2149a31dfc5475ca9b3902e414430ca"
-  version = "1.6.0"
+  revision = "5a12f175e493a233d9da982bdb4e217b0f7d5195"
+  version = "1.6.1"
 
 [[projects]]
   name = "github.com/go-ini/ini"
@@ -106,6 +106,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "84456f7838f835cbbd9adb7811ee7587a7992aab0202c1777ccaef6841da7045"
+  inputs-digest = "6c7b5fb63f75a1d8b31e87ffb7c86fda0b49eacaa18de8cce4a393f0ec05ff2e"
   solver-name = "gps-cdcl"
   solver-version = 1
