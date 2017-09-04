@@ -82,7 +82,7 @@ func Bind(callback TaskEvent, name string) (err error) {
 	}
 	plugin.minio.SetAppInfo(name, "0.1.0") // todo: 0.1.0
 
-	active := make(map[string]struct{})
+	active := ""
 
 	requestHandler := func(ctx context.Context, delivery amqp.Delivery) {
 		logger.Debug("consumed message",
@@ -177,7 +177,13 @@ func Bind(callback TaskEvent, name string) (err error) {
 		}
 
 		if nextPlugin != "" {
-			if _, ok := active[payload.NMO.Job.JobID]; !ok {
+			if active != nextPlugin {
+				errs := plugin.sender.Close()
+				if errs != nil {
+					logger.Fatal("failed to close sender",
+						zap.Errors("errors", errs))
+				}
+
 				plugin.sender, err = lsqlib.NewQueueSender(context.Background(), plugin.config.AmqpHost, plugin.config.AmqpPort, plugin.config.AmqpMgrPort, plugin.config.AmqpUser, plugin.config.amqpPass, &lsqlib.SenderConfig{
 					LogHandler:   queueLogHandler,
 					ErrorHandler: queueErrorHandler,
@@ -193,9 +199,9 @@ func Bind(callback TaskEvent, name string) (err error) {
 					delivery.Reject(false)
 					return
 				}
-			} else {
-				active[payload.NMO.Job.JobID] = struct{}{}
 			}
+
+			active = nextPlugin
 
 			err = plugin.sender.Send(0, "", payloadRaw)
 			if err != nil {
