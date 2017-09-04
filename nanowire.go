@@ -67,16 +67,6 @@ func Bind(callback TaskEvent, name string) (err error) {
 		},
 	}
 
-	plugin.sender, err = lsqlib.NewQueueSender(context.Background(), plugin.config.AmqpHost, plugin.config.AmqpPort, plugin.config.AmqpMgrPort, plugin.config.AmqpUser, plugin.config.amqpPass, &lsqlib.SenderConfig{
-		LogHandler:   queueLogHandler,
-		ErrorHandler: queueErrorHandler,
-		PerJobNaming: false,
-		Identifier:   name,
-	})
-	if err != nil {
-		return errors.Wrap(err, "failed to create new queue sender")
-	}
-
 	minioSecure := false
 	if plugin.config.MinioScheme == "https" {
 		minioSecure = true
@@ -91,6 +81,8 @@ func Bind(callback TaskEvent, name string) (err error) {
 		return errors.Wrap(err, "failed to communicate with Minio")
 	}
 	plugin.minio.SetAppInfo(name, "0.1.0") // todo: 0.1.0
+
+	active := make(map[string]struct{})
 
 	requestHandler := func(ctx context.Context, delivery amqp.Delivery) {
 		logger.Debug("consumed message",
@@ -177,7 +169,28 @@ func Bind(callback TaskEvent, name string) (err error) {
 			return
 		}
 
-		plugin.sender.Send(0, "", payloadRaw)
+		if nextPlugin != "" {
+			if _, ok := active[payload.NMO.Job.JobID]; !ok {
+				plugin.sender, err = lsqlib.NewQueueSender(context.Background(), plugin.config.AmqpHost, plugin.config.AmqpPort, plugin.config.AmqpMgrPort, plugin.config.AmqpUser, plugin.config.amqpPass, &lsqlib.SenderConfig{
+					LogHandler:   queueLogHandler,
+					ErrorHandler: queueErrorHandler,
+					PerJobNaming: false,
+					Identifier:   nextPlugin,
+				})
+				if err != nil {
+					logger.Warn("failed to create new queue sender",
+						zap.Error(err),
+						zap.String("job_id", payload.NMO.Job.JobID),
+						zap.String("task_id", payload.NMO.Task.TaskID),
+						zap.Uint64("delivery_tag", delivery.DeliveryTag))
+					return
+				}
+			} else {
+				active[payload.NMO.Job.JobID] = struct{}{}
+			}
+
+			plugin.sender.Send(0, "", payloadRaw)
+		}
 	}
 
 	plugin.receiver, err = lsqlib.NewQueueReceiver(context.Background(), plugin.config.AmqpHost, plugin.config.AmqpPort, plugin.config.AmqpMgrPort, plugin.config.AmqpUser, plugin.config.amqpPass, &lsqlib.ReceiverConfig{
