@@ -27,7 +27,7 @@
 
 [[constraint]]
   name = "bitbucket.org/spotlightdatateam/lsqlib"
-  version = "1.6.1"
+  version = "1.6.2"
 
 [[constraint]]
   name = "github.com/minio/minio-go"

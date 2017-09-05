@@ -10,8 +10,8 @@
 [[projects]]
   name = "bitbucket.org/spotlightdatateam/lsqlib"
   packages = ["."]
-  revision = "5a12f175e493a233d9da982bdb4e217b0f7d5195"
-  version = "1.6.1"
+  revision = "91494a9969edf03abdae52b2e1ab46e70e416625"
+  version = "1.6.2"
 
 [[projects]]
   name = "github.com/go-ini/ini"
