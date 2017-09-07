@@ -1,3 +1,6 @@
+// Package nanowireplugin provides a Go interface to the Nanowire pipeline system. It's a very
+// simple library to implement as it only consists of a single function which binds a user-defined
+// callback function to the internal Nanowire work queue.
 package nanowireplugin
 
 import (
@@ -33,8 +36,8 @@ type Config struct {
 	minioSecret string
 }
 
-// Plugin stores state and client handlers for the plugin
-type Plugin struct {
+// plugin stores state and client handlers for the plugin
+type pluginData struct {
 	config   *Config
 	receiver *lsqlib.Receiver
 	sender   *lsqlib.Sender
@@ -52,7 +55,7 @@ type V3Payload struct {
 
 // Bind links a user function to the Nanowire pipeline system and calls it whenever a task is ready
 func Bind(callback TaskEvent, name string) (err error) {
-	plugin := Plugin{
+	plugin := pluginData{
 		config: &Config{
 			AmqpHost:    configStrFromEnv("AMQP_HOST"),
 			AmqpPort:    configStrFromEnv("AMQP_PORT"),
