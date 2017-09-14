@@ -164,6 +164,16 @@ func Bind(callback TaskEvent, name string) (err error) {
 
 		if result != nil {
 			payload.JSONLD = result
+
+			logger.Debug("finished running user code with nil result",
+				zap.String("job_id", payload.NMO.Job.JobID),
+				zap.String("task_id", payload.NMO.Task.TaskID),
+				zap.Uint64("delivery_tag", delivery.DeliveryTag))
+		} else {
+			logger.Debug("finished running user code",
+				zap.String("job_id", payload.NMO.Job.JobID),
+				zap.String("task_id", payload.NMO.Task.TaskID),
+				zap.Uint64("delivery_tag", delivery.DeliveryTag))
 		}
 
 		payloadRaw, err := json.Marshal(&payload)
