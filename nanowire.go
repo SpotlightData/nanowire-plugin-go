@@ -188,7 +188,7 @@ func Bind(callback TaskEvent, name string) (err error) {
 
 		if nextPlugin != "" {
 			if payload.JSONLD == nil {
-				logger.Warn("result from plugin is nil",
+				logger.Warn("plugin result is nil",
 					zap.String("job_id", payload.NMO.Job.JobID),
 					zap.String("task_id", payload.NMO.Task.TaskID),
 					zap.Uint64("delivery_tag", delivery.DeliveryTag))
