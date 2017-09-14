@@ -160,13 +160,10 @@ func Bind(callback TaskEvent, name string) (err error) {
 			return
 		}
 
-		payload.JSONLD = callback(payload.NMO, payload.JSONLD, url)
+		result := callback(payload.NMO, payload.JSONLD, url)
 
-		if payload.JSONLD == nil {
-			logger.Warn("result from plugin is nil",
-				zap.String("job_id", payload.NMO.Job.JobID),
-				zap.String("task_id", payload.NMO.Task.TaskID),
-				zap.Uint64("delivery_tag", delivery.DeliveryTag))
+		if result != nil {
+			payload.JSONLD = result
 		}
 
 		payloadRaw, err := json.Marshal(&payload)
@@ -180,6 +177,13 @@ func Bind(callback TaskEvent, name string) (err error) {
 		}
 
 		if nextPlugin != "" {
+			if payload.JSONLD == nil {
+				logger.Warn("result from plugin is nil",
+					zap.String("job_id", payload.NMO.Job.JobID),
+					zap.String("task_id", payload.NMO.Task.TaskID),
+					zap.Uint64("delivery_tag", delivery.DeliveryTag))
+			}
+
 			if active != nextPlugin {
 				errs := plugin.sender.Close()
 				if errs != nil {
