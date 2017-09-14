@@ -36,12 +36,15 @@ type Config struct {
 	minioSecret string
 }
 
-// plugin stores state and client handlers for the plugin
-type pluginData struct {
+// pluginHandler stores state and client handlers for the plugin
+type pluginHandler struct {
 	config   *Config
 	receiver *lsqlib.Receiver
 	sender   *lsqlib.Sender
 	minio    *minio.Client
+	name     string
+	callback TaskEvent
+	next     string
 }
 
 // TaskEvent is a callback function signature triggered when a new file is ready to be processed
@@ -55,7 +58,7 @@ type V3Payload struct {
 
 // Bind links a user function to the Nanowire pipeline system and calls it whenever a task is ready
 func Bind(callback TaskEvent, name string) (err error) {
-	plugin := pluginData{
+	plugin := pluginHandler{
 		config: &Config{
 			AmqpHost:    configStrFromEnv("AMQP_HOST"),
 			AmqpPort:    configStrFromEnv("AMQP_PORT"),
@@ -85,157 +88,11 @@ func Bind(callback TaskEvent, name string) (err error) {
 	}
 	plugin.minio.SetAppInfo(name, "0.1.0") // todo: 0.1.0
 
-	active := ""
-
-	requestHandler := func(ctx context.Context, delivery amqp.Delivery) {
-		logger.Debug("consumed message",
-			zap.Uint64("delivery_tag", delivery.DeliveryTag))
-
-		payload := V3Payload{}
-
-		err := json.Unmarshal(delivery.Body, &payload)
-		if err != nil {
-			logger.Warn("failed to unmarshal delivery body",
-				zap.Error(err),
-				zap.Uint64("delivery_tag", delivery.DeliveryTag))
-			delivery.Reject(false)
-			return
-		}
-
-		errs := payload.NMO.Validate()
-		if errs != nil {
-			logger.Warn("failed to validate nmo",
-				zap.Errors("errors", errs),
-				zap.Uint64("delivery_tag", delivery.DeliveryTag))
-			delivery.Reject(false)
-			return
-		}
-
-		if !ensureThisPlugin(name, payload.NMO.Job.Workflow) {
-			logger.Warn("plugin does not exist in its own workflow",
-				zap.String("job_id", payload.NMO.Job.JobID),
-				zap.String("task_id", payload.NMO.Task.TaskID),
-				zap.Uint64("delivery_tag", delivery.DeliveryTag))
-			delivery.Reject(false)
-			return
-		}
-
-		nextPlugin := getNextPlugin(name, payload.NMO.Job.Workflow)
-		if nextPlugin == "" {
-			logger.Debug("plugin has no children",
-				zap.String("job_id", payload.NMO.Job.JobID),
-				zap.String("task_id", payload.NMO.Task.TaskID),
-				zap.Uint64("delivery_tag", delivery.DeliveryTag))
-		}
-
-		path := filepath.Join(payload.NMO.Task.TaskID, "input", "source", payload.NMO.Source.Name)
-
-		exists, err := plugin.minio.BucketExists(payload.NMO.Job.JobID)
-		if err != nil {
-			logger.Warn("failed to check if job bucket exists",
-				zap.Error(err),
-				zap.String("job_id", payload.NMO.Job.JobID),
-				zap.String("task_id", payload.NMO.Task.TaskID),
-				zap.Uint64("delivery_tag", delivery.DeliveryTag))
-			delivery.Reject(false)
-			return
-		}
-		if !exists {
-			logger.Warn("job_id does not have a bucket",
-				zap.String("job_id", payload.NMO.Job.JobID),
-				zap.String("task_id", payload.NMO.Task.TaskID),
-				zap.Uint64("delivery_tag", delivery.DeliveryTag))
-			delivery.Reject(false)
-			return
-		}
-
-		url, err := plugin.minio.PresignedGetObject(payload.NMO.Job.JobID, path, time.Hour, nil)
-		if err != nil {
-			logger.Warn("failed to generate presigned url for source file",
-				zap.Error(err),
-				zap.String("job_id", payload.NMO.Job.JobID),
-				zap.String("task_id", payload.NMO.Task.TaskID),
-				zap.Uint64("delivery_tag", delivery.DeliveryTag))
-			delivery.Reject(false)
-			return
-		}
-
-		result := callback(payload.NMO, payload.JSONLD, url)
-
-		if result != nil {
-			payload.JSONLD = result
-
-			logger.Debug("finished running user code with nil result",
-				zap.String("job_id", payload.NMO.Job.JobID),
-				zap.String("task_id", payload.NMO.Task.TaskID),
-				zap.Uint64("delivery_tag", delivery.DeliveryTag))
-		} else {
-			logger.Debug("finished running user code",
-				zap.String("job_id", payload.NMO.Job.JobID),
-				zap.String("task_id", payload.NMO.Task.TaskID),
-				zap.Uint64("delivery_tag", delivery.DeliveryTag))
-		}
-
-		payloadRaw, err := json.Marshal(&payload)
-		if err != nil {
-			logger.Warn("failed to marshal payload",
-				zap.String("job_id", payload.NMO.Job.JobID),
-				zap.String("task_id", payload.NMO.Task.TaskID),
-				zap.Uint64("delivery_tag", delivery.DeliveryTag))
-			delivery.Reject(false)
-			return
-		}
-
-		if nextPlugin != "" {
-			if payload.JSONLD == nil {
-				logger.Warn("plugin result is nil",
-					zap.String("job_id", payload.NMO.Job.JobID),
-					zap.String("task_id", payload.NMO.Task.TaskID),
-					zap.Uint64("delivery_tag", delivery.DeliveryTag))
-			}
-
-			if active != nextPlugin {
-				errs := plugin.sender.Close()
-				if errs != nil {
-					logger.Fatal("failed to close sender",
-						zap.Errors("errors", errs))
-				}
-
-				plugin.sender, err = lsqlib.NewQueueSender(context.Background(), plugin.config.AmqpHost, plugin.config.AmqpPort, plugin.config.AmqpMgrPort, plugin.config.AmqpUser, plugin.config.amqpPass, &lsqlib.SenderConfig{
-					LogHandler:   queueLogHandler,
-					ErrorHandler: queueErrorHandler,
-					PerJobNaming: false,
-					Identifier:   nextPlugin,
-				})
-				if err != nil {
-					logger.Warn("failed to create new queue sender",
-						zap.Error(err),
-						zap.String("job_id", payload.NMO.Job.JobID),
-						zap.String("task_id", payload.NMO.Task.TaskID),
-						zap.Uint64("delivery_tag", delivery.DeliveryTag))
-					delivery.Reject(false)
-					return
-				}
-			}
-
-			active = nextPlugin
-
-			err = plugin.sender.Send(0, "", payloadRaw)
-			if err != nil {
-				logger.Warn("failed to send payload",
-					zap.Error(err),
-					zap.String("job_id", payload.NMO.Job.JobID),
-					zap.String("task_id", payload.NMO.Task.TaskID),
-					zap.Uint64("delivery_tag", delivery.DeliveryTag))
-				delivery.Reject(false)
-				return
-			}
-		}
-		delivery.Ack(false)
-	}
+	plugin.name = name
+	plugin.callback = callback
 
 	plugin.receiver, err = lsqlib.NewQueueReceiver(context.Background(), plugin.config.AmqpHost, plugin.config.AmqpPort, plugin.config.AmqpMgrPort, plugin.config.AmqpUser, plugin.config.amqpPass, &lsqlib.ReceiverConfig{
-		Handler:          requestHandler,
+		Handler:          plugin.requestHandler,
 		LogHandler:       queueLogHandler,
 		ErrorHandler:     queueErrorHandler,
 		PerJobNaming:     false,
@@ -245,6 +102,129 @@ func Bind(callback TaskEvent, name string) (err error) {
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to create new queue receiver")
+	}
+
+	return nil
+}
+
+func (plugin *pluginHandler) requestHandler(ctx context.Context, delivery amqp.Delivery) {
+	logger.Debug("consumed message",
+		zap.Uint64("delivery_tag", delivery.DeliveryTag))
+
+	payload := new(V3Payload)
+
+	err := json.Unmarshal(delivery.Body, payload)
+	if err != nil {
+		logger.Warn("failed to unmarshal delivery body",
+			zap.Error(err),
+			zap.Uint64("delivery_tag", delivery.DeliveryTag))
+		delivery.Reject(false)
+		return
+	}
+
+	errs := payload.NMO.Validate()
+	if errs != nil {
+		logger.Warn("failed to validate nmo",
+			zap.Errors("errors", errs),
+			zap.Uint64("delivery_tag", delivery.DeliveryTag))
+		return
+	}
+
+	err = plugin.requestProcessor(payload)
+	if err != nil {
+		err = delivery.Reject(false)
+		if err != nil {
+			logger.Fatal("failed to reject",
+				zap.String("job_id", payload.NMO.Job.JobID),
+				zap.String("task_id", payload.NMO.Task.TaskID),
+				zap.Uint64("delivery_tag", delivery.DeliveryTag),
+				zap.Error(err))
+		}
+	}
+	err = delivery.Ack(false)
+	if err != nil {
+		logger.Fatal("failed to ack",
+			zap.String("job_id", payload.NMO.Job.JobID),
+			zap.String("task_id", payload.NMO.Task.TaskID),
+			zap.Uint64("delivery_tag", delivery.DeliveryTag),
+			zap.Error(err))
+	}
+}
+
+func (plugin *pluginHandler) requestProcessor(payload *V3Payload) error {
+	if !ensureThisPlugin(plugin.name, payload.NMO.Job.Workflow) {
+		return errors.New("plugin does not exist in received message workflow")
+	}
+
+	path := filepath.Join(payload.NMO.Task.TaskID, "input", "source", payload.NMO.Source.Name)
+
+	exists, err := plugin.minio.BucketExists(payload.NMO.Job.JobID)
+	if err != nil {
+		return errors.Wrap(err, "failed to check if job bucket exists")
+	}
+	if !exists {
+		return errors.New("job_id does not have a bucket")
+	}
+
+	url, err := plugin.minio.PresignedGetObject(payload.NMO.Job.JobID, path, time.Hour, nil)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate presigned url for source file")
+	}
+
+	result := plugin.callback(payload.NMO, payload.JSONLD, url)
+
+	if result != nil {
+		payload.JSONLD = result
+
+		logger.Debug("finished running user code with nil result",
+			zap.String("job_id", payload.NMO.Job.JobID),
+			zap.String("task_id", payload.NMO.Task.TaskID))
+	} else {
+		logger.Debug("finished running user code",
+			zap.String("job_id", payload.NMO.Job.JobID),
+			zap.String("task_id", payload.NMO.Task.TaskID))
+	}
+
+	payloadRaw, err := json.Marshal(&payload)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal payload")
+	}
+
+	nextPlugin := getNextPlugin(plugin.name, payload.NMO.Job.Workflow)
+	if nextPlugin != "" {
+		if payload.JSONLD == nil {
+			logger.Warn("payload jsonld is nil but not final plugin in pipeline",
+				zap.String("job_id", payload.NMO.Job.JobID),
+				zap.String("task_id", payload.NMO.Task.TaskID))
+		}
+
+		if plugin.next != nextPlugin {
+			errs := plugin.sender.Close()
+			if errs != nil {
+				logger.Fatal("failed to close sender",
+					zap.Errors("errors", errs))
+			}
+
+			plugin.sender, err = lsqlib.NewQueueSender(context.Background(), plugin.config.AmqpHost, plugin.config.AmqpPort, plugin.config.AmqpMgrPort, plugin.config.AmqpUser, plugin.config.amqpPass, &lsqlib.SenderConfig{
+				LogHandler:   queueLogHandler,
+				ErrorHandler: queueErrorHandler,
+				PerJobNaming: false,
+				Identifier:   nextPlugin,
+			})
+			if err != nil {
+				return errors.Wrap(err, "failed to create new queue sender")
+			}
+		}
+		plugin.next = nextPlugin
+
+		err = plugin.sender.Send(0, "", payloadRaw)
+		if err != nil {
+			return errors.Wrap(err, "failed to send payload")
+		}
+	} else {
+		logger.Debug("plugin has no children",
+			zap.String("job_id", payload.NMO.Job.JobID),
+			zap.String("task_id", payload.NMO.Task.TaskID))
 	}
 
 	return nil
