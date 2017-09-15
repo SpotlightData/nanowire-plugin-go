@@ -30,6 +30,8 @@ type Config struct {
 	MinioHost   string
 	MinioPort   string
 	MinioAccess string
+
+	MonitorURL string
 }
 ```
 
