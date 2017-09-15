@@ -18,6 +18,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/streadway/amqp"
 
+	monitor "bitbucket.org/spotlightdatateam/hcc_lightstream_monitor/client"
+	"bitbucket.org/spotlightdatateam/hcc_lightstream_monitor/shared"
 	"bitbucket.org/spotlightdatateam/hcc_nmo_go"
 	"bitbucket.org/spotlightdatateam/lsqlib"
 )
@@ -34,6 +36,7 @@ type Config struct {
 	MinioPort   string
 	MinioAccess string
 	minioSecret string
+	MonitorURL  string
 }
 
 // pluginHandler stores state and client handlers for the plugin
@@ -42,6 +45,7 @@ type pluginHandler struct {
 	receiver *lsqlib.Receiver
 	sender   *lsqlib.Sender
 	minio    *minio.Client
+	monitor  *monitor.Client
 	name     string
 	callback TaskEvent
 	next     string
@@ -70,6 +74,7 @@ func Bind(callback TaskEvent, name string) (err error) {
 			MinioPort:   configStrFromEnv("MINIO_PORT"),
 			MinioAccess: configStrFromEnv("MINIO_ACCESS"),
 			minioSecret: configStrFromEnv("MINIO_SECRET"),
+			MonitorURL:  configStrFromEnv("MONITOR_URL"),
 		},
 	}
 
@@ -87,6 +92,11 @@ func Bind(callback TaskEvent, name string) (err error) {
 		return errors.Wrap(err, "failed to communicate with Minio")
 	}
 	plugin.minio.SetAppInfo(name, "0.1.0") // todo: 0.1.0
+
+	plugin.monitor, err = monitor.NewClient(plugin.config.MonitorURL)
+	if err != nil {
+		return errors.Wrap(err, "failed to connect to monitor")
+	}
 
 	plugin.name = name
 	plugin.callback = callback
@@ -118,6 +128,11 @@ func (plugin *pluginHandler) requestHandler(ctx context.Context, delivery amqp.D
 		logger.Warn("failed to unmarshal delivery body",
 			zap.Error(err),
 			zap.Uint64("delivery_tag", delivery.DeliveryTag))
+		plugin.monitor.SetTaskStatus(
+			shared.JobID(payload.NMO.Job.JobID),
+			shared.TaskID(payload.NMO.Task.TaskID),
+			shared.Position(plugin.name+".consumed"),
+			"failed to unmarshal delivery body")
 		delivery.Reject(false)
 		return
 	}
@@ -127,11 +142,28 @@ func (plugin *pluginHandler) requestHandler(ctx context.Context, delivery amqp.D
 		logger.Warn("failed to validate nmo",
 			zap.Errors("errors", errs),
 			zap.Uint64("delivery_tag", delivery.DeliveryTag))
+		plugin.monitor.SetTaskStatus(
+			shared.JobID(payload.NMO.Job.JobID),
+			shared.TaskID(payload.NMO.Task.TaskID),
+			shared.Position(plugin.name+".consumed"),
+			"failed to validate nmo")
+		delivery.Reject(false)
 		return
 	}
 
+	plugin.monitor.SetTaskStatus(
+		shared.JobID(payload.NMO.Job.JobID),
+		shared.TaskID(payload.NMO.Task.TaskID),
+		shared.Position(plugin.name+".consumed"),
+		"")
+
 	err = plugin.requestProcessor(payload)
 	if err != nil {
+		plugin.monitor.SetTaskStatus(
+			shared.JobID(payload.NMO.Job.JobID),
+			shared.TaskID(payload.NMO.Task.TaskID),
+			shared.Position(plugin.name+".done"),
+			err.Error())
 		err = delivery.Reject(false)
 		if err != nil {
 			logger.Fatal("failed to reject",
