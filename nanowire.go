@@ -11,17 +11,16 @@ import (
 	"path/filepath"
 	"time"
 
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-
-	"github.com/minio/minio-go"
-	"github.com/pkg/errors"
-	"github.com/streadway/amqp"
-
 	monitor "bitbucket.org/spotlightdatateam/hcc_lightstream_monitor/client"
 	"bitbucket.org/spotlightdatateam/hcc_lightstream_monitor/shared"
 	"bitbucket.org/spotlightdatateam/hcc_nmo_go"
 	"bitbucket.org/spotlightdatateam/lsqlib"
+
+	"github.com/minio/minio-go"
+	"github.com/pkg/errors"
+	"github.com/streadway/amqp"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // Config stores credentials for various services
@@ -184,7 +183,8 @@ func (plugin *pluginHandler) requestHandler(ctx context.Context, delivery amqp.D
 }
 
 func (plugin *pluginHandler) requestProcessor(payload *V3Payload) error {
-	if !ensureThisPlugin(plugin.name, payload.NMO.Job.Workflow) {
+	this := getThisPlugin(plugin.name, payload.NMO.Job.Workflow)
+	if this == -1 {
 		return errors.New("plugin does not exist in received message workflow")
 	}
 
@@ -203,6 +203,12 @@ func (plugin *pluginHandler) requestProcessor(payload *V3Payload) error {
 		return errors.Wrap(err, "failed to generate presigned url for source file")
 	}
 
+	for k, v := range payload.NMO.Job.Workflow[this].Env {
+		err = os.Setenv(k, v)
+		if err != nil {
+			return errors.Wrap(err, "failed to set environment variable")
+		}
+	}
 	result := plugin.callback(payload.NMO, payload.JSONLD, url)
 
 	if result != nil {
@@ -276,13 +282,13 @@ func getNextPlugin(name string, workflow nmo.WorkFlow) string {
 	return ""
 }
 
-func ensureThisPlugin(name string, workflow nmo.WorkFlow) bool {
-	for _, wp := range workflow {
+func getThisPlugin(name string, workflow nmo.WorkFlow) int {
+	for i, wp := range workflow {
 		if wp.Config.Name == name {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
 func queueLogHandler(fmt string, args ...interface{}) {
