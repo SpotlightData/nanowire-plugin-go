@@ -113,6 +113,16 @@ func Bind(callback TaskEvent, name string) (err error) {
 		return errors.Wrap(err, "failed to create new queue receiver")
 	}
 
+	plugin.sender, err = lsqlib.NewQueueSender(context.Background(), plugin.config.AmqpHost, plugin.config.AmqpPort, plugin.config.AmqpMgrPort, plugin.config.AmqpUser, plugin.config.amqpPass, &lsqlib.SenderConfig{
+		LogHandler:   queueLogHandler,
+		ErrorHandler: queueErrorHandler,
+		PerJobNaming: false,
+		Identifier:   "none",
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to create new queue sender")
+	}
+
 	return nil
 }
 
@@ -234,26 +244,7 @@ func (plugin *pluginHandler) requestProcessor(payload *V3Payload) error {
 			return errors.New("payload jsonld is nil but not final plugin in pipeline")
 		}
 
-		if plugin.next != nextPlugin {
-			if plugin.sender != nil {
-				errs := plugin.sender.Close()
-				if errs != nil {
-					logger.Fatal("failed to close sender",
-						zap.Errors("errors", errs))
-				}
-			}
-
-			plugin.sender, err = lsqlib.NewQueueSender(context.Background(), plugin.config.AmqpHost, plugin.config.AmqpPort, plugin.config.AmqpMgrPort, plugin.config.AmqpUser, plugin.config.amqpPass, &lsqlib.SenderConfig{
-				LogHandler:   queueLogHandler,
-				ErrorHandler: queueErrorHandler,
-				PerJobNaming: false,
-				Identifier:   nextPlugin,
-			})
-			if err != nil {
-				return errors.Wrap(err, "failed to create new queue sender")
-			}
-		}
-		plugin.next = nextPlugin
+		plugin.sender.Config.Identifier = nextPlugin
 
 		err = plugin.sender.Send(0, "", payloadRaw)
 		if err != nil {
