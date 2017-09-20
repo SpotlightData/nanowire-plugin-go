@@ -237,10 +237,12 @@ func (plugin *pluginHandler) requestProcessor(payload *V3Payload) error {
 		}
 
 		if plugin.next != nextPlugin {
-			errs := plugin.sender.Close()
-			if errs != nil {
-				logger.Fatal("failed to close sender",
-					zap.Errors("errors", errs))
+			if plugin.sender != nil {
+				errs := plugin.sender.Close()
+				if errs != nil {
+					logger.Fatal("failed to close sender",
+						zap.Errors("errors", errs))
+				}
 			}
 
 			plugin.sender, err = lsqlib.NewQueueSender(context.Background(), plugin.config.AmqpHost, plugin.config.AmqpPort, plugin.config.AmqpMgrPort, plugin.config.AmqpUser, plugin.config.amqpPass, &lsqlib.SenderConfig{
