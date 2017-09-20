@@ -231,9 +231,7 @@ func (plugin *pluginHandler) requestProcessor(payload *V3Payload) error {
 	nextPlugin := getNextPlugin(plugin.name, payload.NMO.Job.Workflow)
 	if nextPlugin != "" {
 		if payload.JSONLD == nil {
-			logger.Warn("payload jsonld is nil but not final plugin in pipeline",
-				zap.String("job_id", payload.NMO.Job.JobID),
-				zap.String("task_id", payload.NMO.Task.TaskID))
+			return errors.New("payload jsonld is nil but not final plugin in pipeline")
 		}
 
 		if plugin.next != nextPlugin {
