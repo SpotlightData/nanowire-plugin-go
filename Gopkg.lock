@@ -16,8 +16,8 @@
 [[projects]]
   name = "bitbucket.org/spotlightdatateam/lsqlib"
   packages = ["."]
-  revision = "0553b457f53b0632a3016c2774f4150f0ca60de8"
-  version = "1.6.4"
+  revision = "f2062de8db179c1b9335757cd517041b1e95b1ef"
+  version = "1.6.5"
 
 [[projects]]
   branch = "master"
