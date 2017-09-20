@@ -123,6 +123,8 @@ func Bind(callback TaskEvent, name string) (err error) {
 		return errors.Wrap(err, "failed to create new queue sender")
 	}
 
+	logger.Debug("initialised nanowire plugin", zap.Any("config", plugin.config))
+
 	return nil
 }
 
