@@ -175,7 +175,9 @@ func (plugin *pluginHandler) requestHandler(ctx context.Context, delivery amqp.D
 			shared.TaskID(payload.NMO.Task.TaskID),
 			shared.Position(plugin.name+".done"),
 			err.Error())
-		err = delivery.Reject(false)
+		logger.Debug("request finished with errors, sending nack",
+			zap.Uint64("delivery_tag", delivery.DeliveryTag))
+		err = delivery.Nack(false, false)
 		if err != nil {
 			logger.Fatal("failed to reject",
 				zap.String("job_id", payload.NMO.Job.JobID),
@@ -183,18 +185,23 @@ func (plugin *pluginHandler) requestHandler(ctx context.Context, delivery amqp.D
 				zap.Uint64("delivery_tag", delivery.DeliveryTag),
 				zap.Error(err))
 		}
+	} else {
+		plugin.monitor.SetTaskStatus(
+			shared.JobID(payload.NMO.Job.JobID),
+			shared.TaskID(payload.NMO.Task.TaskID),
+			shared.Position(plugin.name+".done"),
+			"")
+		logger.Debug("request finished successfully, sending ack",
+			zap.Uint64("delivery_tag", delivery.DeliveryTag))
+		err = delivery.Ack(false)
+		if err != nil {
+			logger.Fatal("failed to ack",
+				zap.String("job_id", payload.NMO.Job.JobID),
+				zap.String("task_id", payload.NMO.Task.TaskID),
+				zap.Uint64("delivery_tag", delivery.DeliveryTag),
+				zap.Error(err))
+		}
 	}
-	err = delivery.Ack(false)
-	if err != nil {
-		logger.Fatal("failed to ack",
-			zap.String("job_id", payload.NMO.Job.JobID),
-			zap.String("task_id", payload.NMO.Task.TaskID),
-			zap.Uint64("delivery_tag", delivery.DeliveryTag),
-			zap.Error(err))
-	}
-	logger.Debug("finished with message and acked/rejected",
-		zap.Uint64("delivery_tag", delivery.DeliveryTag))
-
 }
 
 func (plugin *pluginHandler) requestProcessor(payload *V3Payload) error {
