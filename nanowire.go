@@ -192,6 +192,9 @@ func (plugin *pluginHandler) requestHandler(ctx context.Context, delivery amqp.D
 			zap.Uint64("delivery_tag", delivery.DeliveryTag),
 			zap.Error(err))
 	}
+	logger.Debug("finished with message and acked/rejected",
+		zap.Uint64("delivery_tag", delivery.DeliveryTag))
+
 }
 
 func (plugin *pluginHandler) requestProcessor(payload *V3Payload) error {
